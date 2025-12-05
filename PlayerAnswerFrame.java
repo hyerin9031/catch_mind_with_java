@@ -14,7 +14,7 @@ public class PlayerAnswerFrame extends JFrame {
     private JTextField answerField;
     private JButton sendBtn;
 
-    private final DrawingView drawingView; // 수정된 그리기 패널
+    private final DrawingView drawingView;
 
     public PlayerAnswerFrame() {
         setTitle("CatchMind - 참가자");
@@ -24,7 +24,6 @@ public class PlayerAnswerFrame extends JFrame {
         mainPanel = new JPanel();
         mainPanel.setLayout(new BorderLayout());
 
-        // 상단 정보 영역
         topPanel = new JPanel(new GridLayout(2, 1));
 
         roundLabel = new JLabel("1/10");
@@ -45,12 +44,10 @@ public class PlayerAnswerFrame extends JFrame {
 
         mainPanel.add(topPanel, BorderLayout.NORTH);
 
-        // ---------- 🎨 출제자 그림 수신 + 렌더링 화면 ----------
         drawingView = new DrawingView();
         drawingView.setBackground(Color.WHITE);
         mainPanel.add(drawingView, BorderLayout.CENTER);
 
-        // ---------- 정답 입력 영역 ----------
         bottonPanel = new JPanel();
         bottonPanel.setLayout(new BoxLayout(bottonPanel, BoxLayout.Y_AXIS));
 
@@ -84,14 +81,9 @@ public class PlayerAnswerFrame extends JFrame {
         setVisible(true);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
-        // 🎉 출제자 그림 수신 스레드 시작
         new Thread(new UdpReceiver()).start();
     }
 
-
-    // ============================================
-    //  🎨 출제자로부터 받은 그림 데이터를 표시하는 Panel
-    // ============================================
     private static class DrawingView extends JPanel {
 
         private BufferedImage canvas;
@@ -120,6 +112,14 @@ public class PlayerAnswerFrame extends JFrame {
 
             repaint();
         }
+        
+        public void clear() {
+            if (canvas != null && g2 != null) {
+                g2.setColor(Color.WHITE);
+                g2.fillRect(0, 0, getWidth(), getHeight());
+                repaint();
+            }
+        }
 
         @Override
         protected void paintComponent(Graphics g) {
@@ -130,11 +130,6 @@ public class PlayerAnswerFrame extends JFrame {
         }
     }
 
-
-    // ===========================================================
-    //  📡 출제자(HostDrawFrame) → 참가자(PlayerAnswerFrame)
-    //     UDP 패킷을 받아서 그림을 그리는 스레드
-    // ===========================================================
     private class UdpReceiver implements Runnable {
 
         @Override
@@ -163,6 +158,9 @@ public class PlayerAnswerFrame extends JFrame {
                         int stroke = Integer.parseInt(parts[8]);
 
                         drawingView.drawFromHost(x1, y1, x2, y2, r, g, b, stroke);
+                    }else if (msg.equals("CLEAR")) {
+                        // 캔버스 초기화
+                        SwingUtilities.invokeLater(() -> drawingView.clear());
                     }
                 }
 
