@@ -119,6 +119,7 @@ public class HostDrawFrame extends JFrame {
 		new Thread(() -> {
 			try {
 				String msg;
+				String lastScores = ""; // 최종 점수 저장
 				while ((msg = in.readLine()) != null) {
 					System.out.println("[HOST] 수신: " + msg);
 
@@ -127,19 +128,27 @@ public class HostDrawFrame extends JFrame {
 						SwingUtilities.invokeLater(() -> initTurn());
 					} else if(msg.startsWith("ROUND:")) {
 						// 라운드 업데이트
+						String round = msg.substring(6);
 						SwingUtilities.invokeLater(() -> {
-							roundLabel.setText(gameInfo.getCurrentRound() + " / 10");
+							roundLabel.setText(round + " / 10");
+						});
+					} else if(msg.startsWith("SCORES:")) {
+						// 점수 업데이트
+						String scores = msg.substring(7);
+						lastScores = scores; // 최종 점수 저장
+						SwingUtilities.invokeLater(() -> {
+							StringBuilder sb = new StringBuilder("<html>");
+							for (String entry : scores.split(",")) {
+								sb.append(entry.replace(":", ": ")).append("<br>");
+							}
+							sb.append("</html>");
+							playerLabel.setText(sb.toString());
 						});
 					} else if(msg.equals("GAME_END")) {
+						String finalScores = lastScores; // 최종 점수 저장
 						SwingUtilities.invokeLater(() -> {
 							JOptionPane.showMessageDialog(this, "게임 종료!");
-							new HostScoreFrame(socket);
-							dispose();
-						});
-					} else if(msg.equals("REQUEST_WORD")) {
-						// custom 모드에서 새 단어 요청
-						SwingUtilities.invokeLater(() -> {
-							new HostCustomFrame(socket);
+							new HostScoreFrame(socket, finalScores);
 							dispose();
 						});
 					}

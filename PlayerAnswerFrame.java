@@ -221,10 +221,11 @@ public class PlayerAnswerFrame extends JFrame {
                             answerField.setEnabled(false); // 정답 맞춘 사람만 입력 비활성화
                         });
                     } else if (msg.startsWith("NEW_ROUND")) {
-                        // 새 라운드 시작 시 입력창 다시 활성화
+                        // 새 라운드 시작 시 입력창 다시 활성화 및 그림 지우기
                         SwingUtilities.invokeLater(() -> {
                             answerField.setEnabled(true);
                             answerField.setText("");
+                            drawingView.clear(); // 그림 지우기
                         });
                     } else if (msg.equals("GAME_END")) {
                         // 최종 점수를 받을 시간을 주기 위해 약간 대기

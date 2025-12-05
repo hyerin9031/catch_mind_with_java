@@ -10,6 +10,8 @@ public class PlayerScoreFrame extends JFrame{
     private JTextArea scoreArea;
 
     private Socket playerSocket;
+    private BufferedReader in;
+    private boolean restart = false;
 
     public PlayerScoreFrame(Socket playerSocket, String finalScores) {
         this.playerSocket = playerSocket;
@@ -68,6 +70,30 @@ public class PlayerScoreFrame extends JFrame{
         add(mainPanel);
         setVisible(true);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+
+        // RESTART 메시지 대기
+        listenForRestart();
+    }
+
+    private void listenForRestart() {
+        new Thread(() -> {
+            try {
+                in = new BufferedReader(new InputStreamReader(playerSocket.getInputStream()));
+                String msg;
+                while ((msg = in.readLine()) != null) {
+                    if (msg.equals("RESTART")) {
+                        // 게임 재시작 - PlayerAnswerFrame으로 돌아가기
+                        SwingUtilities.invokeLater(() -> {
+                            new PlayerAnswerFrame(playerSocket);
+                            dispose();
+                        });
+                        break;
+                    }
+                }
+            } catch (Exception e) {
+                System.out.println("[PLAYER] RESTART 수신 실패");
+            }
+        }).start();
     }
 
     public static void main(String[] args) {

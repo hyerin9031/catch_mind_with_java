@@ -2,7 +2,6 @@ import javax.swing.*;
 import java.awt.*;
 import java.net.Socket;
 import java.io.*;
-import java.util.Map;
 
 public class HostScoreFrame extends JFrame{
     private JPanel mainPanel, bottom, centerPanel;
@@ -12,7 +11,7 @@ public class HostScoreFrame extends JFrame{
     Socket hostsocket = null;
     PrintWriter out = null;
 
-    public HostScoreFrame(Socket hostsocket) {
+    public HostScoreFrame(Socket hostsocket, String finalScores) {
         this.hostsocket = hostsocket;
 
         try {
@@ -35,13 +34,20 @@ public class HostScoreFrame extends JFrame{
         scoreArea.setFont(scoreArea.getFont().deriveFont(Font.BOLD, 20f));
         scoreArea.setEditable(false);
 
-        // GameInfo에서 점수 가져오기
-        GameInfo gameInfo = MainServer.getGameInfo();
-        StringBuilder sb = new StringBuilder();
-        for (Map.Entry<String, Integer> entry : gameInfo.getGameState().entrySet()) {
-            sb.append(entry.getKey()).append(": ").append(entry.getValue()).append("점\n");
+        // 점수 표시
+        if (finalScores == null || finalScores.isEmpty()) {
+            scoreArea.setText("플레이어가 없습니다.");
+        } else {
+            StringBuilder sb = new StringBuilder();
+            String[] entries = finalScores.split(",");
+            for (String entry : entries) {
+                String[] parts = entry.split(":");
+                if (parts.length == 2) {
+                    sb.append(parts[0]).append(": ").append(parts[1]).append("점\n");
+                }
+            }
+            scoreArea.setText(sb.toString());
         }
-        scoreArea.setText(sb.toString());
 
         centerPanel = new JPanel();
         centerPanel.setLayout(new BorderLayout());
@@ -54,7 +60,15 @@ public class HostScoreFrame extends JFrame{
 
         restartBtn.addActionListener(e -> {
             // 게임 리셋
+            GameInfo gameInfo = MainServer.getGameInfo();
             gameInfo.reset();
+
+            // 플레이어들에게 재시작 신호 전송
+            try {
+                out.println("RESTART");
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
 
             // HostHomeFrame으로 돌아가기
             new HostHomeFrame(hostsocket);
