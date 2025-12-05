@@ -2,48 +2,65 @@ package termproject;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.ActionEvent;
+import java.net.*;
+import java.io.*;
 
 public class PlayerHomeFrame extends JFrame {
-	private JPanel mainPanel;
-	private JButton submitBtn;
-	private JTextField nameField;
-	private JLabel label;
-	
-	public PlayerHomeFrame() {
-		setTitle("CatchMind - 참가자");
+    private JPanel mainPanel;
+    private JButton submitBtn;
+    private JTextField nameField;
+    private JLabel label;
+
+    private Socket playerSocket;
+    private PrintWriter out;
+
+    public PlayerHomeFrame(Socket playerSocket) {
+        this.playerSocket = playerSocket;
+
+        try {
+            out = new PrintWriter(playerSocket.getOutputStream(), true);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        setTitle("CatchMind - 참가자");
         setSize(900, 600);
         setLocationRelativeTo(null);
-		
-		mainPanel = new JPanel();
-		mainPanel.setLayout(new GridBagLayout());
-		GridBagConstraints gbc = new GridBagConstraints();
+
+        mainPanel = new JPanel();
+        mainPanel.setLayout(new GridBagLayout());
+        GridBagConstraints gbc = new GridBagConstraints();
         gbc.insets = new Insets(5, 5, 5, 5);
-        
+
         nameField = new JTextField(20);
-        
+
         label = new JLabel("닉네임을 입력해주세요: ");
         submitBtn = new JButton("완료");
-        
+
         submitBtn.addActionListener(e -> {
             String text = nameField.getText().trim();
             if (text.isEmpty()) {
                 JOptionPane.showMessageDialog(this, "닉네임을 입력하세요.");
                 return;
             }
-            //TODO 입력된 참가자 이름 서버로 전달, PlayerAnswerFrame으로 이동
-            
+
+            // 서버로 닉네임 전송
+            out.println("NICK:" + text);
+
+            // PlayerAnswerFrame으로 이동
+            new PlayerAnswerFrame();
+            dispose();
         });
-        
+
         gbc.gridx = 0; gbc.gridy = 0;
         mainPanel.add(label, gbc);
         gbc.gridx = 1;
         mainPanel.add(nameField, gbc);
         gbc.gridx = 2;
         mainPanel.add(submitBtn, gbc);
-        
+
         add(mainPanel);
         setVisible(true);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-	}
+    }
 }
