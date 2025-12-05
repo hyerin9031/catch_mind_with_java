@@ -1,7 +1,4 @@
-# catch_mind_with_java
-
-## 제발 정리 좀 하면서 살자 
--> 흥   
+# catch_mind_with_java 
  
 <img width="2560" height="1600" alt="image" src="https://github.com/user-attachments/assets/8d6f6553-3bee-4b49-8a79-e3c5ff5ea152" />
 
