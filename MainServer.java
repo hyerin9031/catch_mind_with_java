@@ -1,12 +1,11 @@
 package termproject;
 
-import java.util.*;
-import java.net.*;
 import java.io.*;
+import java.net.*;
 
-//animal, food, object 문제 출제
+// animal, food, object 문제 출제용 클래스
 class Problem {
-    private List<String> wordList = new ArrayList<>();
+    private java.util.List<String> wordList = new java.util.ArrayList<>();
     private String animalFile = "catchmind_words_animal.txt";
     private String foodFile = "catchmind_words_food.txt";
     private String objectFile = "catchmind_words_object.txt";
@@ -40,11 +39,14 @@ class Problem {
 
 public class MainServer {
 
-    private static final int HOST_PORT = 7100;
+    private static final int HOST_PORT = 7300;
+    private static final int PLAYER_PORT = 7400; // 플레이어 전용 포트
     private static Socket hostSocket = null;
     private static GameInfo gameInfo = new GameInfo();
 
     public static void main(String[] args) {
+        // -------------------
+        // Host TCP 서버
         Thread hostThread = new Thread(() -> {
             try (ServerSocket hostServer = new ServerSocket(HOST_PORT)) {
                 System.out.println("[SERVER] Host 대기중... PORT=" + HOST_PORT);
@@ -55,10 +57,26 @@ public class MainServer {
                 e.printStackTrace();
             }
         });
-
         hostThread.start();
+
+        // -------------------
+        // Player TCP 서버
+        Thread playerThread = new Thread(() -> {
+            try (ServerSocket playerServer = new ServerSocket(PLAYER_PORT)) {
+                System.out.println("[SERVER] Player 대기중... PORT=" + PLAYER_PORT);
+                while (true) {
+                    Socket playerSocket = playerServer.accept();
+                    System.out.println("[SERVER] Player 연결됨: " + playerSocket.getInetAddress());
+                    new Thread(new PlayerHandler(playerSocket)).start();
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        });
+        playerThread.start();
     }
 
+    // ==================== HostHandler
     static class HostHandler implements Runnable {
         private BufferedReader in;
         private PrintWriter out;
@@ -106,8 +124,41 @@ public class MainServer {
         }
     }
 
+    // ==================== PlayerHandler
+    static class PlayerHandler implements Runnable {
+        private BufferedReader in;
+        private PrintWriter out;
+
+        public PlayerHandler(Socket socket) {
+            try {
+                in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
+                out = new PrintWriter(socket.getOutputStream(), true);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        @Override
+        public void run() {
+            try {
+                String msg;
+                while ((msg = in.readLine()) != null) {
+                    System.out.println("[PLAYER] MSG: " + msg);
+                    if (msg.startsWith("NICK:")) {
+                        String nickname = msg.substring(5).trim();
+                        gameInfo.addPlayer(nickname); // GameInfo에 플레이어 추가
+                        System.out.println("[PLAYER] 닉네임 등록: " + nickname);
+                    }
+                    // TODO: 정답 처리, 점수 업데이트 등 추가 가능
+                }
+            } catch (Exception e) {
+                System.out.println("[SERVER] Player 연결 종료");
+            }
+        }
+    }
+
+    // ==================== GameInfo getter
     public static GameInfo getGameInfo() {
         return gameInfo;
     }
 }
-
