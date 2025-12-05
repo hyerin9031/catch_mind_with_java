@@ -1,11 +1,10 @@
-package termproject;
-
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.ActionEvent;
 import java.awt.image.BufferedImage;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.Socket;
+import java.io.*;
 
 public class PlayerAnswerFrame extends JFrame {
 
@@ -16,7 +15,22 @@ public class PlayerAnswerFrame extends JFrame {
 
     private final DrawingView drawingView;
 
-    public PlayerAnswerFrame() {
+    private Socket playerSocket;
+    private BufferedReader in;
+    private PrintWriter out;
+
+    private String currentWord = ""; // 현재 문제 단어 (힌트용)
+
+    public PlayerAnswerFrame(Socket playerSocket) {
+        this.playerSocket = playerSocket;
+
+        try {
+            in = new BufferedReader(new InputStreamReader(playerSocket.getInputStream()));
+            out = new PrintWriter(playerSocket.getOutputStream(), true);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
         setTitle("CatchMind - 참가자");
         setSize(900, 600);
         setLocationRelativeTo(null);
@@ -28,7 +42,7 @@ public class PlayerAnswerFrame extends JFrame {
 
         roundLabel = new JLabel("1/10");
         problemLabel = new JLabel("_ _");
-        playerLabel = new JLabel("P1 : 10");
+        playerLabel = new JLabel("");
 
         problemLabel.setHorizontalAlignment(SwingConstants.CENTER);
         problemLabel.setFont(problemLabel.getFont().deriveFont(Font.BOLD, 22f));
@@ -64,7 +78,9 @@ public class PlayerAnswerFrame extends JFrame {
                 JOptionPane.showMessageDialog(this, "정답을 입력해주세요.");
                 return;
             }
-            // TODO 서버로 정답 전송
+            // 서버로 정답 전송
+            out.println("ANSWER:" + answer);
+            answerField.setText(""); // 입력창 초기화
         });
 
         answerField.addActionListener(e -> sendBtn.doClick());
@@ -82,6 +98,7 @@ public class PlayerAnswerFrame extends JFrame {
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
         new Thread(new UdpReceiver()).start();
+        new Thread(new TcpReceiver()).start(); // 서버 메시지 수신
     }
 
     private static class DrawingView extends JPanel {
@@ -112,7 +129,7 @@ public class PlayerAnswerFrame extends JFrame {
 
             repaint();
         }
-        
+
         public void clear() {
             if (canvas != null && g2 != null) {
                 g2.setColor(Color.WHITE);
@@ -170,7 +187,66 @@ public class PlayerAnswerFrame extends JFrame {
         }
     }
 
+    // TCP 메시지 수신 (서버로부터 게임 상태 업데이트)
+    private class TcpReceiver implements Runnable {
+        @Override
+        public void run() {
+            try {
+                String msg;
+                while ((msg = in.readLine()) != null) {
+                    System.out.println("[PLAYER] 수신: " + msg);
+
+                    if (msg.startsWith("HINT:")) {
+                        // 힌트 업데이트 (예: "HINT:_ _ _")
+                        String hint = msg.substring(5);
+                        SwingUtilities.invokeLater(() -> problemLabel.setText(hint));
+                    } else if (msg.startsWith("ROUND:")) {
+                        // 라운드 업데이트 (예: "ROUND:3")
+                        String round = msg.substring(6);
+                        SwingUtilities.invokeLater(() -> roundLabel.setText(round + "/10"));
+                    } else if (msg.startsWith("SCORES:")) {
+                        // 점수 업데이트 (예: "SCORES:Player1:10,Player2:5")
+                        String scores = msg.substring(7);
+                        SwingUtilities.invokeLater(() -> {
+                            StringBuilder sb = new StringBuilder("<html>");
+                            for (String entry : scores.split(",")) {
+                                sb.append(entry.replace(":", ": ")).append("<br>");
+                            }
+                            sb.append("</html>");
+                            playerLabel.setText(sb.toString());
+                        });
+                    } else if (msg.equals("CORRECT")) {
+                        SwingUtilities.invokeLater(() -> {
+                            JOptionPane.showMessageDialog(PlayerAnswerFrame.this, "정답입니다!");
+                            answerField.setEnabled(false); // 정답 맞춘 사람만 입력 비활성화
+                        });
+                    } else if (msg.startsWith("NEW_ROUND")) {
+                        // 새 라운드 시작 시 입력창 다시 활성화
+                        SwingUtilities.invokeLater(() -> {
+                            answerField.setEnabled(true);
+                            answerField.setText("");
+                        });
+                    } else if (msg.equals("GAME_END")) {
+                        // 최종 점수를 받을 시간을 주기 위해 약간 대기
+                        Thread.sleep(500);
+                        SwingUtilities.invokeLater(() -> {
+                            new PlayerScoreFrame(playerSocket, playerLabel.getText());
+                            dispose();
+                        });
+                    }
+                }
+            } catch (Exception e) {
+                System.out.println("[PLAYER] TCP 수신 종료");
+            }
+        }
+    }
+
     public static void main(String[] args) {
-        new PlayerAnswerFrame();
+        try {
+            Socket socket = new Socket("localhost", 7400);
+            new PlayerAnswerFrame(socket);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 }

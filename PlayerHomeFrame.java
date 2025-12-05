@@ -1,5 +1,3 @@
-package termproject;
-
 import javax.swing.*;
 import java.awt.*;
 import java.net.*;
@@ -48,9 +46,12 @@ public class PlayerHomeFrame extends JFrame {
             out.println("NICK:" + text);
 
             // PlayerAnswerFrame으로 이동
-            new PlayerAnswerFrame();
+            new PlayerAnswerFrame(playerSocket);
             dispose();
         });
+
+        // Enter 키로도 제출 가능
+        nameField.addActionListener(e -> submitBtn.doClick());
 
         gbc.gridx = 0; gbc.gridy = 0;
         mainPanel.add(label, gbc);

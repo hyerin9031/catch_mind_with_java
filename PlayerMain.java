@@ -1,5 +1,3 @@
-package termproject;
-
 import java.net.*;
 
 public class PlayerMain {
@@ -14,6 +12,5 @@ public class PlayerMain {
 			e.printStackTrace();
 		}
 	}
-	
-}
 
+}

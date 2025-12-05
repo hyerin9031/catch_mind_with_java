@@ -1,50 +1,81 @@
-package termproject;
-
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.ActionEvent;
+import java.net.Socket;
+import java.io.*;
 
 public class PlayerScoreFrame extends JFrame{
-	private JPanel mainPanel, bottom, centerPanel;
-	private JButton restartBtn, endBtn;
-	private JLabel title, score;
-	
-	public PlayerScoreFrame() {
-		// TODO 서버에 요청해서 플레이어 정보 가져오기 및 score에 설정
-		setTitle("CatchMind - 출제자");
+    private JPanel mainPanel, bottom, centerPanel;
+    private JButton exitBtn;
+    private JLabel title;
+    private JTextArea scoreArea;
+
+    private Socket playerSocket;
+
+    public PlayerScoreFrame(Socket playerSocket, String finalScores) {
+        this.playerSocket = playerSocket;
+
+        setTitle("CatchMind - 최종 점수");
         setSize(900, 600);
         setLocationRelativeTo(null);
-        
-		mainPanel = new JPanel();
-		mainPanel.setLayout(new BorderLayout());
-		
-		title = new JLabel("Score", SwingConstants.CENTER);
+
+        mainPanel = new JPanel();
+        mainPanel.setLayout(new BorderLayout());
+
+        title = new JLabel("최종 점수", SwingConstants.CENTER);
         title.setFont(title.getFont().deriveFont(Font.BOLD, 24f));
-        
-        score = new JLabel("P1 : 10");
-        score.setFont(score.getFont().deriveFont(Font.BOLD, 20f));
+
+        scoreArea = new JTextArea();
+        scoreArea.setFont(scoreArea.getFont().deriveFont(Font.BOLD, 20f));
+        scoreArea.setEditable(false);
+
+        // HTML 태그 제거하고 점수 표시
+        String cleanScores = finalScores.replaceAll("<html>", "")
+                .replaceAll("</html>", "")
+                .replaceAll("<br>", "\n")
+                .trim();
+
+        if (cleanScores.isEmpty()) {
+            scoreArea.setText("점수 정보가 없습니다.");
+        } else {
+            scoreArea.setText(cleanScores);
+        }
+
         centerPanel = new JPanel();
-        centerPanel.add(score);
+        centerPanel.setLayout(new BorderLayout());
+        centerPanel.add(scoreArea, BorderLayout.CENTER);
         centerPanel.setBackground(Color.white);
-        
+
         bottom = new JPanel();
-        restartBtn = new JButton("다시하기");
-        endBtn = new JButton("끝내기");
-        //TODO 각각의 버튼이 눌렸을 떄 화면 이동, 종료 및 게임 정보 리셋 이벤트 추가
-        
-        bottom.add(restartBtn);
-        bottom.add(endBtn);
-        
+        exitBtn = new JButton("종료");
+
+        exitBtn.addActionListener(e -> {
+            try {
+                if (playerSocket != null && !playerSocket.isClosed()) {
+                    playerSocket.close();
+                }
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
+            System.exit(0);
+        });
+
+        bottom.add(exitBtn);
+
         mainPanel.add(title, BorderLayout.NORTH);
         mainPanel.add(new JScrollPane(centerPanel), BorderLayout.CENTER);
         mainPanel.add(bottom, BorderLayout.SOUTH);
-        
+
         add(mainPanel);
         setVisible(true);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-	}
-	public static void main(String[] args) {
-		PlayerScoreFrame p = new PlayerScoreFrame();
-	}
-	
+    }
+
+    public static void main(String[] args) {
+        try {
+            Socket socket = new Socket("localhost", 7400);
+            PlayerScoreFrame p = new PlayerScoreFrame(socket, "Player1: 10\nPlayer2: 5");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 }
