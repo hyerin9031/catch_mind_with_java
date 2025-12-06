@@ -72,6 +72,7 @@ public class MainServer {
 	private static List<String> customWords = new ArrayList<>(); // 사용자 직접 출제 단어 목록
 	private static int customWordIndex = 0; // 현재 사용 중인 custom 단어 인덱스
 	private static Problem currentProblem = null; // 현재 카테고리의 Problem 인스턴스
+	static PrintWriter hostOut;
 
 	public static void main(String[] args) {
 		// Host TCP 서버
@@ -111,6 +112,7 @@ public class MainServer {
 			try {
 				in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 				out = new PrintWriter(socket.getOutputStream(), true);
+				MainServer.hostOut = out;     // ★ 호스트 출력 스트림을 MainServer에 공유
 				out.println("HOST_OK");
 			} catch (Exception e) {
 				e.printStackTrace();
@@ -304,21 +306,30 @@ public class MainServer {
 								// 모든 플레이어에게 점수 업데이트 브로드캐스트
 								broadcastScores();
 
-								// 모든 플레이어가 정답을 맞췄으면 다음 라운드로
-								if (gameInfo.allPlayersAnswered()) {
-									System.out.println("[SERVER] 모든 플레이어 정답! 다음 라운드로...");
+								// ★ 호스트에게도 정답자 정보 보내기
+								//    => HostDrawFrame에서 HOST_CORRECT_PLAYER:... 메시지를 받아 팝업 띄움
+								MainServer.sendToHost(
+										"HOST_CORRECT_PLAYER:" + playerName + ":" + gameInfo.getWord()
+								);
 
-									// 3초 대기 후 다음 라운드
-									new Timer().schedule(new TimerTask() {
-										@Override
-										public void run() {
-											nextRound();
-										}
-									}, 3000);
-								}
+								// ★ 자동 다음 라운드 진행은 제거
+								//    이제는 호스트 팝업의 "확인" 버튼이 Next 역할을 함
+            /*
+            if (gameInfo.allPlayersAnswered()) {
+                System.out.println("[SERVER] 모든 플레이어 정답! 다음 라운드로...");
+
+                new Timer().schedule(new TimerTask() {
+                    @Override
+                    public void run() {
+                        nextRound();
+                    }
+                }, 3000);
+            }
+            */
 							}
 						}
 					}
+
 				}
 			} catch (Exception e) {
 				System.out.println("[SERVER] Player 연결 종료: " + playerName);

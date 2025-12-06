@@ -5,6 +5,8 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.Socket;
 import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.net.InetAddress;
 
 public class PlayerAnswerFrame extends JFrame {
 
@@ -12,17 +14,21 @@ public class PlayerAnswerFrame extends JFrame {
     private JLabel problemLabel, playerLabel, roundLabel;
     private JTextField answerField;
     private JButton sendBtn;
+    private JDialog messageDialog;  // 현재 떠 있는 메시지 창 (정답/안내)
 
     private final DrawingView drawingView;
 
+    private DatagramSocket udpSocket;
     private Socket playerSocket;
     private BufferedReader in;
     private PrintWriter out;
 
+    private String nickname;
     private String currentWord = ""; // 현재 문제 단어 (힌트용)
 
-    public PlayerAnswerFrame(Socket playerSocket) {
+    public PlayerAnswerFrame(Socket playerSocket, String nickname) {
         this.playerSocket = playerSocket;
+        this.nickname = nickname;
 
         try {
             in = new BufferedReader(new InputStreamReader(playerSocket.getInputStream()));
@@ -34,6 +40,7 @@ public class PlayerAnswerFrame extends JFrame {
         setTitle("CatchMind - 참가자");
         setSize(900, 600);
         setLocationRelativeTo(null);
+        setResizable(false);
 
         mainPanel = new JPanel();
         mainPanel.setLayout(new BorderLayout());
@@ -97,7 +104,20 @@ public class PlayerAnswerFrame extends JFrame {
         setVisible(true);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
-        new Thread(new UdpReceiver()).start();
+        try {
+            udpSocket = new DatagramSocket(); // 포트 지정X → OS가 랜덤 포트 배정
+            new Thread(new UdpReceiver()).start();
+
+            // 닉네임이 있다면 JOIN 보내기
+            String joinMsg = "JOIN:" + nickname;   // nickname은 네가 이미 가지고 있는 플레이어 이름
+            byte[] data = joinMsg.getBytes(StandardCharsets.UTF_8);
+            InetAddress serverAddr = InetAddress.getByName("localhost"); // DrawingServer가 있는 곳
+            DatagramPacket p = new DatagramPacket(data, data.length, serverAddr, 9100);
+            udpSocket.send(p);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
         new Thread(new TcpReceiver()).start(); // 서버 메시지 수신
     }
 
@@ -106,23 +126,49 @@ public class PlayerAnswerFrame extends JFrame {
         private BufferedImage canvas;
         private Graphics2D g2;
 
-        public DrawingView() {}
+        public DrawingView() {
+            setPreferredSize(new Dimension(600, 400));
+            // 패널 리사이즈 시 캔버스도 재조정
+            addComponentListener(new java.awt.event.ComponentAdapter() {
+                @Override
+                public void componentResized(java.awt.event.ComponentEvent e) {
+                    ensureCanvasSize();
+                    repaint();
+                }
+            });
+        }
 
-        private void initCanvas() {
-            if (canvas == null) {
-                canvas = new BufferedImage(getWidth(), getHeight(), BufferedImage.TYPE_INT_ARGB);
-                g2 = canvas.createGraphics();
-                g2.setColor(Color.WHITE);
-                g2.fillRect(0, 0, getWidth(), getHeight());
-                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        private void ensureCanvasSize() {
+            int w = Math.max(1, getWidth());
+            int h = Math.max(1, getHeight());
+            if (w <= 0 || h <= 0) return;
+
+            if (canvas == null || canvas.getWidth() != w || canvas.getHeight() != h) {
+                BufferedImage newImg = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+                Graphics2D gNew = newImg.createGraphics();
+                gNew.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+                // 배경 흰색
+                gNew.setColor(Color.WHITE);
+                gNew.fillRect(0, 0, w, h);
+
+                // 기존 그림 복사
+                if (canvas != null) {
+                    gNew.drawImage(canvas, 0, 0, null);
+                    g2.dispose();
+                }
+
+                canvas = newImg;
+                g2 = gNew;
             }
         }
 
         public void drawFromHost(int x1, int y1, int x2, int y2,
                                  int r, int g, int b, int stroke) {
 
-            if (g2 == null) initCanvas();
+            ensureCanvasSize();
 
+            if (g2 == null) return;
             g2.setStroke(new BasicStroke(stroke));
             g2.setColor(new Color(r, g, b));
             g2.drawLine(x1, y1, x2, y2);
@@ -148,44 +194,43 @@ public class PlayerAnswerFrame extends JFrame {
     }
 
     private class UdpReceiver implements Runnable {
-
         @Override
         public void run() {
-            try (DatagramSocket socket = new DatagramSocket(9001)) {
+            try {
                 byte[] buf = new byte[1024];
 
                 while (true) {
                     DatagramPacket packet = new DatagramPacket(buf, buf.length);
-                    socket.receive(packet);
+                    udpSocket.receive(packet);
 
-                    String msg = new String(packet.getData(), 0, packet.getLength());
+                    String msg = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8);
 
-                    // 패킷 형식:
-                    // DRAW x1 y1 x2 y2 r g b stroke
                     if (msg.startsWith("DRAW")) {
                         String[] parts = msg.split(" ");
+                        if (parts.length >= 9) {
+                            int x1 = Integer.parseInt(parts[1]);
+                            int y1 = Integer.parseInt(parts[2]);
+                            int x2 = Integer.parseInt(parts[3]);
+                            int y2 = Integer.parseInt(parts[4]);
+                            int r  = Integer.parseInt(parts[5]);
+                            int g  = Integer.parseInt(parts[6]);
+                            int b  = Integer.parseInt(parts[7]);
+                            int stroke = Integer.parseInt(parts[8]);
 
-                        int x1 = Integer.parseInt(parts[1]);
-                        int y1 = Integer.parseInt(parts[2]);
-                        int x2 = Integer.parseInt(parts[3]);
-                        int y2 = Integer.parseInt(parts[4]);
-                        int r = Integer.parseInt(parts[5]);
-                        int g = Integer.parseInt(parts[6]);
-                        int b = Integer.parseInt(parts[7]);
-                        int stroke = Integer.parseInt(parts[8]);
-
-                        drawingView.drawFromHost(x1, y1, x2, y2, r, g, b, stroke);
-                    }else if (msg.equals("CLEAR")) {
-                        // 캔버스 초기화
+                            SwingUtilities.invokeLater(() ->
+                                    drawingView.drawFromHost(x1, y1, x2, y2, r, g, b, stroke)
+                            );
+                        }
+                    } else if ("CLEAR".equals(msg)) {
                         SwingUtilities.invokeLater(() -> drawingView.clear());
                     }
                 }
-
-            } catch (Exception e) {
-                System.out.println("UDP 수신 오류: " + e.getMessage());
+            } catch (IOException e) {
+                System.out.println("UDP 수신 종료: " + e.getMessage());
             }
         }
     }
+
 
     // TCP 메시지 수신 (서버로부터 게임 상태 업데이트)
     private class TcpReceiver implements Runnable {
@@ -217,35 +262,59 @@ public class PlayerAnswerFrame extends JFrame {
                         });
                     } else if (msg.equals("CORRECT")) {
                         SwingUtilities.invokeLater(() -> {
-                            JOptionPane.showMessageDialog(PlayerAnswerFrame.this, "정답입니다!");
-                            answerField.setEnabled(false); // 정답 맞춘 사람만 입력 비활성화
+                            // 기존 팝업 있으면 먼저 닫기
+                            if (messageDialog != null && messageDialog.isShowing()) {
+                                messageDialog.dispose();
+                            }
+
+                            JOptionPane pane = new JOptionPane(
+                                    "정답입니다!\n호스트가 다음 라운드를 시작하면 게임이 계속됩니다.",
+                                    JOptionPane.INFORMATION_MESSAGE
+                            );
+                            messageDialog = pane.createDialog(PlayerAnswerFrame.this, "정답");
+                            messageDialog.setModal(false);  // 모달 X, 그냥 정보 알림
+                            messageDialog.setVisible(true);
+
+                            answerField.setEnabled(false); // 정답 맞춘 사람 입력 비활성화
                         });
                     } else if (msg.startsWith("CORRECT_PLAYER:")) {
-                        // 다른 플레이어가 정답을 맞췄을 때
                         String[] parts = msg.substring(15).split(":");
                         if (parts.length >= 2) {
                             String correctPlayer = parts[0];
                             String correctAnswer = parts[1];
                             SwingUtilities.invokeLater(() -> {
-                                JOptionPane.showMessageDialog(PlayerAnswerFrame.this,
-                                        correctPlayer + "님이 정답을 맞췄습니다!\n정답: " + correctAnswer);
+                                if (messageDialog != null && messageDialog.isShowing()) {
+                                    messageDialog.dispose();
+                                }
+
+                                String text =
+                                        correctPlayer + "님이 정답을 맞췄습니다!\n" +
+                                                "정답: " + correctAnswer + "\n" +
+                                                "호스트가 다음 라운드를 시작하면 게임이 계속됩니다.";
+
+                                JOptionPane pane = new JOptionPane(
+                                        text,
+                                        JOptionPane.INFORMATION_MESSAGE
+                                );
+                                messageDialog = pane.createDialog(PlayerAnswerFrame.this, "정답 안내");
+                                messageDialog.setModal(false);
+                                messageDialog.setVisible(true);
                             });
                         }
-                    } else if (msg.startsWith("ANSWER_REVEAL:")) {
-                        // 다음 라운드로 넘어갈 때 정답 공개
-                        String answer = msg.substring(14);
-                        SwingUtilities.invokeLater(() -> {
-                            JOptionPane.showMessageDialog(PlayerAnswerFrame.this,
-                                    "다음 라운드로 넘어갑니다\n정답: " + answer);
-                        });
                     } else if (msg.startsWith("NEW_ROUND")) {
-                        // 새 라운드 시작 시 입력창 다시 활성화 및 그림 지우기
                         SwingUtilities.invokeLater(() -> {
+                            // 떠 있는 안내창 있으면 강제로 닫기
+                            if (messageDialog != null && messageDialog.isShowing()) {
+                                messageDialog.dispose();
+                                messageDialog = null;
+                            }
+
                             answerField.setEnabled(true);
                             answerField.setText("");
                             drawingView.clear(); // 그림 지우기
                         });
-                    } else if (msg.equals("GAME_END")) {
+                    }
+                    else if (msg.equals("GAME_END")) {
                         // 최종 점수를 받을 시간을 주기 위해 약간 대기
                         Thread.sleep(500);
                         SwingUtilities.invokeLater(() -> {
@@ -271,15 +340,6 @@ public class PlayerAnswerFrame extends JFrame {
             } catch (Exception e) {
                 System.out.println("[PLAYER] TCP 수신 종료");
             }
-        }
-    }
-
-    public static void main(String[] args) {
-        try {
-            Socket socket = new Socket("localhost", 7400);
-            new PlayerAnswerFrame(socket);
-        } catch (Exception e) {
-            e.printStackTrace();
         }
     }
 }

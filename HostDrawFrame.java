@@ -11,6 +11,7 @@ public class HostDrawFrame extends JFrame {
 	private JPanel mainPanel, topPanel, sidePanel, bottomPanel;
 	private JButton penBtn, eraseBtn, colorBtn, clearBtn, nextBtn;
 	private JLabel wordLabel, playerLabel, roundLabel;
+	private JDialog correctDialog;   // (지금은 안 써도 되지만 남겨둠)
 
 	private Socket socket;
 	private BufferedReader in;
@@ -29,7 +30,7 @@ public class HostDrawFrame extends JFrame {
 			in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
 			out = new PrintWriter(socket.getOutputStream(), true);
 
-			sender = new UdpSender("255.255.255.255", 9001);
+			sender = new UdpSender("localhost", 9100);
 		} catch (Exception e) {
 			e.printStackTrace();
 		}
@@ -37,6 +38,7 @@ public class HostDrawFrame extends JFrame {
 		setTitle("CatchMind - 출제자");
 		setSize(900, 600);
 		setLocationRelativeTo(null);
+		setResizable(false); // ★ 화면 크기 고정
 
 		mainPanel = new JPanel(new BorderLayout());
 
@@ -96,11 +98,7 @@ public class HostDrawFrame extends JFrame {
 		// 하단 버튼 (다음 라운드)
 		bottomPanel = new JPanel();
 		nextBtn = new JButton("다음 라운드");
-		nextBtn.addActionListener(e -> {
-			out.println("Next");
-			drawingPanel.clear();
-			sender.send("CLEAR");
-		});
+		nextBtn.addActionListener(e -> proceedNextRound()); // ★ 공통 함수 호출
 		bottomPanel.add(nextBtn);
 		mainPanel.add(bottomPanel, BorderLayout.SOUTH);
 
@@ -112,18 +110,19 @@ public class HostDrawFrame extends JFrame {
 		startReceiver();
 	}
 
+	// ★ 호스트가 다음 라운드로 넘길 때 공통 동작
+	private void proceedNextRound() {
+		out.println("Next");
+		drawingPanel.clear();
+		sender.send("CLEAR");
+	}
+
 	private void initTurn() {
 		// 라운드/단어만 호스트 쪽 GameInfo로 갱신
 		roundLabel.setText(gameInfo.getCurrentRound() + " / 10");
 		wordLabel.setText(gameInfo.getWord());
-
-		// ❌ 점수는 여기서 건드리지 말고,
-		// ✅ 서버에서 오는 "SCORES:" 메세지에서만 갱신하도록 둔다.
-		// playerLabel.setText(...) 부분 삭제
-
 		drawingPanel.clear();
 	}
-
 
 	private void startReceiver() {
 		new Thread(() -> {
@@ -133,16 +132,18 @@ public class HostDrawFrame extends JFrame {
 				while ((msg = in.readLine()) != null) {
 					System.out.println("[HOST] 수신: " + msg);
 
-					if(msg.startsWith("WORD:")) {
+					if (msg.startsWith("WORD:")) {
 						gameInfo.setWord(msg.substring(5));
-						SwingUtilities.invokeLater(() -> initTurn());
-					} else if(msg.startsWith("ROUND:")) {
+						SwingUtilities.invokeLater(this::initTurn);
+
+					} else if (msg.startsWith("ROUND:")) {
 						// 라운드 업데이트
 						String round = msg.substring(6);
-						SwingUtilities.invokeLater(() -> {
-							roundLabel.setText(round + " / 10");
-						});
-					} else if(msg.startsWith("SCORES:")) {
+						SwingUtilities.invokeLater(() ->
+								roundLabel.setText(round + " / 10")
+						);
+
+					} else if (msg.startsWith("SCORES:")) {
 						// 점수 업데이트
 						String scores = msg.substring(7);
 						lastScores = scores; // 최종 점수 저장
@@ -154,7 +155,33 @@ public class HostDrawFrame extends JFrame {
 							sb.append("</html>");
 							playerLabel.setText(sb.toString());
 						});
-					} else if(msg.equals("GAME_END")) {
+
+					} else if (msg.startsWith("HOST_CORRECT_PLAYER:")) {
+						// ★ 정답자 정보 수신 → 호스트에게 팝업 띄우기
+						String[] parts = msg.substring("HOST_CORRECT_PLAYER:".length()).split(":");
+						if (parts.length >= 2) {
+							String correctPlayer = parts[0];
+							String correctAnswer = parts[1];
+
+							SwingUtilities.invokeLater(() -> {
+								String text =
+										correctPlayer + "님이 정답을 맞췄습니다!\n" +
+												"정답: " + correctAnswer + "\n\n" +
+												"확인을 누르면 다음 라운드로 넘어갑니다.";
+
+								int result = JOptionPane.showConfirmDialog(
+										HostDrawFrame.this,
+										text,
+										"정답 알림",
+										JOptionPane.OK_CANCEL_OPTION
+								);
+								if (result == JOptionPane.OK_OPTION) {
+									proceedNextRound();
+								}
+							});
+						}
+
+					} else if (msg.equals("GAME_END")) {
 						String finalScores = lastScores; // 최종 점수 저장
 						SwingUtilities.invokeLater(() -> {
 							JOptionPane.showMessageDialog(this, "게임 종료!");
@@ -171,7 +198,7 @@ public class HostDrawFrame extends JFrame {
 
 	private void changeColor(ActionEvent e) {
 		Color c = JColorChooser.showDialog(this, "색상 선택", drawingPanel.getCurrentColor());
-		if(c != null) drawingPanel.setCurrentColor(c);
+		if (c != null) drawingPanel.setCurrentColor(c);
 	}
 
 	private static class DrawingPanel extends JPanel {
@@ -187,19 +214,30 @@ public class HostDrawFrame extends JFrame {
 			this.sender = sender;
 
 			setBackground(Color.WHITE);
-			setPreferredSize(new Dimension(600,400));
+			setPreferredSize(new Dimension(600, 400)); // ★ 그림판 크기 고정
+
+			// 패널 크기 바뀌면 캔버스도 맞춰주기
+			addComponentListener(new ComponentAdapter() {
+				@Override
+				public void componentResized(ComponentEvent e) {
+					ensureCanvasSize();
+					repaint();
+				}
+			});
 
 			addMouseListener(new MouseAdapter() {
+				@Override
 				public void mousePressed(MouseEvent e) {
-					initGraphics();
+					ensureCanvasSize();
 					lastX = e.getX();
 					lastY = e.getY();
 				}
 			});
 
-			addMouseMotionListener(new MouseAdapter() {
+			addMouseMotionListener(new MouseMotionAdapter() {
+				@Override
 				public void mouseDragged(MouseEvent e) {
-					if(g2 == null) return;
+					ensureCanvasSize();
 
 					int x = e.getX();
 					int y = e.getY();
@@ -207,7 +245,7 @@ public class HostDrawFrame extends JFrame {
 					int strokeWidth;
 					Color drawColor;
 
-					if(eraser) {
+					if (eraser) {
 						strokeWidth = 20;
 						drawColor = Color.WHITE;
 					} else {
@@ -219,10 +257,13 @@ public class HostDrawFrame extends JFrame {
 					g2.setColor(drawColor);
 					g2.drawLine(lastX, lastY, x, y);
 
-					String msg = String.format("DRAW %d %d %d %d %d %d %d %d",
+					// UDP sender 활용 -> DrawingServer로 전송
+					String msg = String.format(
+							"DRAW %d %d %d %d %d %d %d %d",
 							lastX, lastY, x, y,
 							drawColor.getRed(), drawColor.getGreen(), drawColor.getBlue(),
-							strokeWidth);
+							strokeWidth
+					);
 					sender.send(msg);
 
 					lastX = x;
@@ -232,33 +273,50 @@ public class HostDrawFrame extends JFrame {
 			});
 		}
 
-		private void initGraphics() {
-			if(canvas == null) {
-				canvas = new BufferedImage(getWidth(), getHeight(), BufferedImage.TYPE_INT_ARGB);
-				g2 = canvas.createGraphics();
-				g2.setColor(Color.WHITE);
-				g2.fillRect(0,0,getWidth(),getHeight());
-				g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+		private void ensureCanvasSize() {
+			int w = Math.max(1, getWidth());
+			int h = Math.max(1, getHeight());
+			if (w == 0 || h == 0) return;
+
+			if (canvas == null || canvas.getWidth() != w || canvas.getHeight() != h) {
+				BufferedImage newImg = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+				Graphics2D gNew = newImg.createGraphics();
+				gNew.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+				gNew.setColor(Color.WHITE);
+				gNew.fillRect(0, 0, w, h);
+
+				if (canvas != null) {
+					gNew.drawImage(canvas, 0, 0, null);  // 기존 그림 복사
+					g2.dispose();
+				}
+
+				canvas = newImg;
+				g2 = gNew;
+			}
+		}
+
+		@Override
+		protected void paintComponent(Graphics g) {
+			super.paintComponent(g);
+			ensureCanvasSize();
+			if (canvas != null) {
+				g.drawImage(canvas, 0, 0, null);
 			}
 		}
 
 		public void clear() {
-			if(canvas != null && g2 != null) {
+			ensureCanvasSize();
+			if (canvas != null && g2 != null) {
 				g2.setColor(Color.WHITE);
-				g2.fillRect(0,0,getWidth(),getHeight());
+				g2.fillRect(0, 0, getWidth(), getHeight());
 				repaint();
 			}
 		}
 
 		public void setEraser(boolean e) { this.eraser = e; }
 		public void setCurrentColor(Color c) { this.currentColor = c; }
-		public Color getCurrentColor() { return currentColor; }
 
-		@Override
-		protected void paintComponent(Graphics g) {
-			super.paintComponent(g);
-			if(canvas != null) g.drawImage(canvas,0,0,null);
-		}
+		public Color getCurrentColor() { return currentColor; }
 	}
 
 	public static class UdpSender {
