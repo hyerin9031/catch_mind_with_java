@@ -42,11 +42,13 @@ public class PlayerHomeFrame extends JFrame {
                 return;
             }
 
-            // 서버로 닉네임 전송
+            // 1) 서버로 닉네임 전송 (TCP)
             out.println("NICK:" + text);
 
-            // PlayerAnswerFrame으로 이동
-            new PlayerAnswerFrame(playerSocket);
+            // 2) 닉네임을 함께 넘겨서 PlayerAnswerFrame 생성
+            new PlayerAnswerFrame(playerSocket, text);
+
+            // 3) 현재 닉네임 입력 창 닫기
             dispose();
         });
 
